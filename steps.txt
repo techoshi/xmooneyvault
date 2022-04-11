@@ -1,0 +1,1 @@
+npm install hardhat-gas-reporter --save-dev
