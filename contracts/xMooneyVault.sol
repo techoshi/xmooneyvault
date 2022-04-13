@@ -69,7 +69,7 @@ contract xMooneyVault is Ownable {
             endTimestamp: DateTimeLib.toTimestamp(2022, 3, 11, 59, 59)
         });
         allCycles.push(genesis);
-        setTokenSchedule(100);
+        setTokenSchedule(30);
         circulationExcludedAddresses = excludedAddresses;
     }
 
@@ -119,12 +119,7 @@ contract xMooneyVault is Ownable {
         public
         returns (CycleSchedule[] memory)
     {
-        console.log(allCycles.length);
-        console.log(cycleDepth);
-        console.log(cycleDurationInMonths);
-        console.log("--Start");
-
-        uint TotalCycles = (allCycles.length + cycleDepth);
+        uint256 TotalCycles = (allCycles.length + cycleDepth);
 
         for (
             uint256 index = allCycles.length + 1;
@@ -136,6 +131,9 @@ contract xMooneyVault is Ownable {
             CycleSchedule memory nextCycle = allCycles[allCycles.length - 1];
 
             nextCycle.cycleID = nextNumber;
+            nextCycle.title = string(
+                abi.encodePacked("xM-cycle-", Strings.toString(nextNumber))
+            );
 
             if (nextNumber % 4 == 0) {
                 nextCycle.disbursementRate = nextCycle.disbursementRate / 2;
@@ -146,12 +144,10 @@ contract xMooneyVault is Ownable {
                 (nextCycle.month + 9) <= 12
                 ? false
                 : true;
-            bool push2NextYear2 = (nextCycle.endMonth + 9) >= 1 &&
-                (nextCycle.endMonth + 9) <= 12
-                ? false
-                : true;
 
-            uint8 nextMonths1 = (nextCycle.month + cycleDurationInMonths) <= 12 ? (nextCycle.month + cycleDurationInMonths) : (nextCycle.month + cycleDurationInMonths) - 12;
+            uint8 nextMonths1 = (nextCycle.month + cycleDurationInMonths) <= 12
+                ? (nextCycle.month + cycleDurationInMonths)
+                : (nextCycle.month + cycleDurationInMonths) - 12;
 
             nextCycle.month = push2NextYear
                 ? nextMonths1
@@ -159,41 +155,34 @@ contract xMooneyVault is Ownable {
                 ? 12
                 : nextMonths1 - 12;
             nextCycle.year = push2NextYear
-                ? nextCycle.year
-                : nextCycle.year + 1;
+                ? nextCycle.year + 1
+                : nextCycle.year;
             nextCycle.timestamp = DateTimeLib.toTimestamp(
                 nextCycle.year,
                 nextCycle.month,
                 12
-            );         
+            );
 
-            console.log("Start Month");
-            console.log(nextCycle.month);
-            console.log("Start Year");
-            console.log(nextCycle.year);
-            console.log("---------");
+            bool push2NextYear2 = (nextMonths1 + cycleDurationInMonths) >= 1 &&
+                (nextMonths1 + cycleDurationInMonths) <= 12
+                ? false
+                : true;
 
-         
+            uint8 nextMonths = (nextMonths1 + cycleDurationInMonths) <= 12
+                ? (nextMonths1 + cycleDurationInMonths)
+                : (nextMonths1 + cycleDurationInMonths) - 12;
 
-            uint8 nextMonths = (nextMonths1 + cycleDurationInMonths) <= 12 ? (nextMonths1 + cycleDurationInMonths) : (nextMonths1 + cycleDurationInMonths) - 12;
-            console.log("End Year Month");
-            console.log(nextMonths);
-            console.log("---------");
-            console.log("End Year");
-            console.log(nextCycle.endYear);
-            console.log("---------");
-            console.log("");
-            console.log("");
-
-            nextCycle.endMonth = push2NextYear2 ? nextMonths : nextMonths + 1;
+            nextCycle.endMonth = nextMonths;
 
             nextCycle.endYear = push2NextYear2
-                ? nextCycle.endYear
-                : nextCycle.endYear + 1;
-            nextCycle.timestamp = DateTimeLib.toTimestamp(
+                ? nextCycle.endYear + 1
+                : nextCycle.endYear;
+            nextCycle.endTimestamp = DateTimeLib.toTimestamp(
                 nextCycle.endYear,
                 nextCycle.endMonth,
-                11
+                nextCycle.endDay,
+                59,
+                59
             );
 
             allCycles.push(nextCycle);
@@ -207,11 +196,11 @@ contract xMooneyVault is Ownable {
     }
 
     function getCurrentCycle() public view returns (CycleSchedule memory) {
-        uint256 asOf = currentTimestamp();
+        uint256 asOf = block.timestamp;
 
         CycleSchedule memory CurrentCycle;
 
-        for (uint256 index = 0; index < numberOfCycles; index++) {
+        for (uint256 index = 0; index < allCycles.length; index++) {
             if (
                 allCycles[index].timestamp < asOf &&
                 allCycles[index].endTimestamp >= asOf
@@ -236,11 +225,10 @@ contract xMooneyVault is Ownable {
                 circulationExcludedAddresses[index]
             );
 
-            if (index > 10)
-            {
+            if (index > 10) {
                 break;
             }
-        }        
+        }
 
         return IERC20(xMooneyContractAddress).totalSupply() - total;
     }

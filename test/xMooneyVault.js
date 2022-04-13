@@ -60,7 +60,7 @@ if (true == true)
             returnObject.currentBlockTime = currentBlockTime;        
             const thisCycle = await xMooneyVaultContract.getCurrentCycle();
             
-            //returnObject.thisCycle = thisCycle;    
+            returnObject.currentCycle = thisCycle;    
                           
         });     
         
@@ -92,7 +92,13 @@ if (true == true)
             const circulating = await xMooneyVaultContract.getCirculatingSupply();
             
             returnObject.circulating = circulating;                              
-        });             
+        });         
+        
+        it("getSchedule", async function () {            
+            const circulating = await xMooneyVaultContract.getSchedule();
+            
+            //returnObject.loadedSchedule = circulating;                              
+        });    
 
         it("Console Log Object", async function () {            
            console.log(returnObject);                           
