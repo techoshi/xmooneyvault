@@ -1,25 +1,30 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
+
 let xMooneyContract, xMooneyVaultContract;
 
 let returnObject = {}
 
 if (true == true)
-    describe("SuperGas", function () {
+    describe("xMooneyVault", function () {
         let buyer, contractOwner, hashValue;
         before(async () => {
-            const [contractOwner, taxWallet] = await ethers.getSigners();
+            // const Library = await ethers.getContractFactory("DateTime");
+            // const library = await Library.deploy();
+            // await library.deployed();
+
+            const [contractOwner, _1, _2, _3] = await ethers.getSigners();
             //Step 1 Load xMooney Contract
             const xMooneyToken = await ethers.getContractFactory("xMooneyToken");
-            xMooneyContract = await xMooneyToken.deploy('xMooney', 'xM', 9, 21000000000,3,0,7,contractOwner.address,contractOwner.address);        
+            xMooneyContract = await xMooneyToken.deploy('xMooney', 'xM', 9, 21000000000,3,0,7,_1.address,contractOwner.address);        
             await xMooneyContract.deployed();
 
             returnObject.contract = xMooneyContract.address;
             
             //Step 2 Load xMooney Vault Contract
             const xMooneyVault = await ethers.getContractFactory("xMooneyVault");
-            xMooneyVaultContract = await xMooneyVault.deploy(xMooneyContract.address);        
+            xMooneyVaultContract = await xMooneyVault.deploy(xMooneyContract.address, [contractOwner.address, _2.address]);        
             returnObject.xMooneyVaultAddress = xMooneyVaultContract.address;
             await xMooneyVaultContract.deployed();            
         });
@@ -35,13 +40,27 @@ if (true == true)
             returnObject.taxFee = taxFee;                                  
         });  
 
+        it("GetDay", async function () {
+            const currentDay = await xMooneyVaultContract.getDay2();
+            
+            // console.log("Today");                          
+            // console.log(currentDay);                          
+        });    
+        
+        it("genesisTimestamp", async function () {
+            const result = await xMooneyVaultContract.genesisTimestamp();
+            
+            // console.log("Genesis");                          
+            // console.log(result);                          
+        });   
+
         it("GetTimeStamp", async function () {
             const currentBlockTime = await xMooneyVaultContract.currentTimestamp();
 
             returnObject.currentBlockTime = currentBlockTime;        
             const thisCycle = await xMooneyVaultContract.getCurrentCycle();
             
-            returnObject.thisCycle = thisCycle;    
+            //returnObject.thisCycle = thisCycle;    
                           
         });     
         
@@ -66,7 +85,7 @@ if (true == true)
             returnObject.nonCirculatingWallet2 = { adddress : nonCirculatingWallet2.address, amount:  await xMooneyContract.balanceOf(nonCirculatingWallet2.address) }; 
             returnObject.vaultBalance  = { adddress : returnObject.xMooneyVaultAddress, amount:  await xMooneyContract.balanceOf(returnObject.xMooneyVaultAddress) };
 
-            console.log(returnObject); 
+            //console.log(returnObject); 
         });
 
         it("getCirculatingSupply", async function () {            
@@ -76,6 +95,6 @@ if (true == true)
         });             
 
         it("Console Log Object", async function () {            
-            console.log(returnObject);                           
-        });     
+           console.log(returnObject);                           
+        });    
     })

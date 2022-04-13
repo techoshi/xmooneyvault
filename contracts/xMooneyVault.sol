@@ -1,95 +1,209 @@
-// contracts/GLDToken.sol
+// contracts/xMooneyVaultToken.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
+// import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "./DateTimeLib.sol";
 import "hardhat/console.sol";
 
 contract xMooneyVault is Ownable {
     using SafeMath for uint256;
-    using Counters for Counters.Counter;
+    // using Counters for Counters.Counter;
+
     using Strings for uint256;
 
-    uint256 public genesisDate = 1623513600; //June 12, 2021
+    uint256 public genesisDate = 1623456000; //June 12, 2021
+    uint256 private startingCirculatingBalance = 1000000000; //Dev Allotment
     uint256 private initialCycleTokenDisbursement = 2625000000; //2,625,000,000
     uint256 private numberOfCycles = 0;
     uint256 private startingCycleID = 1;
     uint256 private numberOfCyclesToLoad = 50;
+    uint8 private cycleDurationInMonths = 9;
     uint16 private currentNoCycle = 0;
     address public xMooneyContractAddress;
     address[] public circulationExcludedAddresses;
     bool public active = true;
-    
+
     struct CycleSchedule {
-        string cycleID;
-        uint256 cycleTokenDisbursement;
-        uint256 halvingStartDate;
-        uint256 halvingEndDate;
-        uint256 releaseRate;
+        string title;
+        uint256 cycleID;
+        uint256 disbursementRate;
+        uint256 disbursementAmount;
+        // uint256 halvingStartDate;
+        // uint256 halvingEndDate;
+        // uint256 releaseRate;
+        uint16 year;
+        uint8 month;
+        uint8 day;
+        uint256 timestamp;
+        uint16 endYear;
+        uint8 endMonth;
+        uint8 endDay;
+        uint256 endTimestamp;
     }
 
     mapping(uint256 => CycleSchedule) fullSchedule;
 
     CycleSchedule[] public allCycles;
 
-    constructor(address _token) {
+    constructor(address _token, address[] memory excludedAddresses) {
         xMooneyContractAddress = _token;
-        LoadUpSchedule();
+        // LoadUpSchedule();
+        CycleSchedule memory genesis = CycleSchedule({
+            title: string(abi.encodePacked("xM-cycle-", "0")),
+            cycleID: 0,
+            disbursementRate: 1,
+            disbursementAmount: initialCycleTokenDisbursement,
+            year: 2021,
+            month: 6,
+            day: 12,
+            timestamp: DateTimeLib.toTimestamp(2021, 6, 12),
+            endYear: 2022,
+            endMonth: 3,
+            endDay: 11,
+            endTimestamp: DateTimeLib.toTimestamp(2022, 3, 11, 59, 59)
+        });
+        allCycles.push(genesis);
+        setTokenSchedule(100);
+        circulationExcludedAddresses = excludedAddresses;
+    }
+
+    function genesisTimestamp() public pure returns (uint256) {
+        return DateTimeLib.toTimestamp(2021, 6, 12);
+    }
+
+    function getDay2() public view returns (string memory) {
+        uint8 day2 = DateTimeLib.getWeekday(block.timestamp);
+
+        if (day2 == 0) {
+            return "Sunday";
+        }
+
+        if (day2 == 1) {
+            return "Monday";
+        }
+
+        if (day2 == 2) {
+            return "Tuesday";
+        }
+
+        if (day2 == 3) {
+            return "Wednesday";
+        }
+
+        if (day2 == 4) {
+            return "Thursday";
+        }
+
+        if (day2 == 5) {
+            return "Friday";
+        }
+
+        if (day2 == 6) {
+            return "Saturday";
+        }
+
+        return "";
     }
 
     function currentTimestamp() public view returns (uint256) {
         return block.timestamp;
     }
 
-    function LoadUpSchedule() private {
-        uint256 startOfCycle = genesisDate;
-        uint256 currentTokenCount = initialCycleTokenDisbursement;
+    function setTokenSchedule(uint256 cycleDepth)
+        public
+        returns (CycleSchedule[] memory)
+    {
+        console.log(allCycles.length);
+        console.log(cycleDepth);
+        console.log(cycleDurationInMonths);
+        console.log("--Start");
 
-        uint256 endOfCycle = startOfCycle + 274 days; //Adjust to 9 months
-        
-        for (uint256 index = startingCycleID; index <= (startingCycleID+numberOfCyclesToLoad); index++) {
-                        
-            if(currentNoCycle < 4)
-            {
-                currentTokenCount = (currentTokenCount/2);
+        uint TotalCycles = (allCycles.length + cycleDepth);
+
+        for (
+            uint256 index = allCycles.length + 1;
+            index <= TotalCycles;
+            index++
+        ) {
+            uint256 nextNumber = allCycles[allCycles.length - 1].cycleID + 1;
+
+            CycleSchedule memory nextCycle = allCycles[allCycles.length - 1];
+
+            nextCycle.cycleID = nextNumber;
+
+            if (nextNumber % 4 == 0) {
+                nextCycle.disbursementRate = nextCycle.disbursementRate / 2;
+                nextCycle.disbursementAmount = nextCycle.disbursementAmount / 2;
             }
-            currentNoCycle += 1;
-            
-            setSchedule(
-                string(abi.encodePacked("xM-cycle-", index.toString())),
-                startOfCycle,
-                endOfCycle - 1,
-                currentTokenCount,
-                1000000
+
+            bool push2NextYear = (nextCycle.month + 9) >= 1 &&
+                (nextCycle.month + 9) <= 12
+                ? false
+                : true;
+            bool push2NextYear2 = (nextCycle.endMonth + 9) >= 1 &&
+                (nextCycle.endMonth + 9) <= 12
+                ? false
+                : true;
+
+            uint8 nextMonths1 = (nextCycle.month + cycleDurationInMonths) <= 12 ? (nextCycle.month + cycleDurationInMonths) : (nextCycle.month + cycleDurationInMonths) - 12;
+
+            nextCycle.month = push2NextYear
+                ? nextMonths1
+                : nextMonths1 - 12 == 0
+                ? 12
+                : nextMonths1 - 12;
+            nextCycle.year = push2NextYear
+                ? nextCycle.year
+                : nextCycle.year + 1;
+            nextCycle.timestamp = DateTimeLib.toTimestamp(
+                nextCycle.year,
+                nextCycle.month,
+                12
+            );         
+
+            console.log("Start Month");
+            console.log(nextCycle.month);
+            console.log("Start Year");
+            console.log(nextCycle.year);
+            console.log("---------");
+
+         
+
+            uint8 nextMonths = (nextMonths1 + cycleDurationInMonths) <= 12 ? (nextMonths1 + cycleDurationInMonths) : (nextMonths1 + cycleDurationInMonths) - 12;
+            console.log("End Year Month");
+            console.log(nextMonths);
+            console.log("---------");
+            console.log("End Year");
+            console.log(nextCycle.endYear);
+            console.log("---------");
+            console.log("");
+            console.log("");
+
+            nextCycle.endMonth = push2NextYear2 ? nextMonths : nextMonths + 1;
+
+            nextCycle.endYear = push2NextYear2
+                ? nextCycle.endYear
+                : nextCycle.endYear + 1;
+            nextCycle.timestamp = DateTimeLib.toTimestamp(
+                nextCycle.endYear,
+                nextCycle.endMonth,
+                11
             );
-            
-            startOfCycle = endOfCycle;
+
+            allCycles.push(nextCycle);
         }
+
+        return allCycles;
     }
 
-    function setSchedule(
-        string memory cycleID,
-        uint256 halvingStartDate,
-        uint256 halvingEndDate,
-        uint256 cycleTokenDisbursement,
-        uint256 releaseRate
-    ) public onlyOwner {
-        numberOfCycles += 1;
-        CycleSchedule memory cycleSchedule = fullSchedule[numberOfCycles];
-
-        cycleSchedule.cycleID = cycleID;
-        cycleSchedule.halvingStartDate = halvingStartDate;
-        cycleSchedule.halvingEndDate = halvingEndDate;
-        cycleSchedule.cycleTokenDisbursement = cycleTokenDisbursement;
-        cycleSchedule.releaseRate = releaseRate;
-
-        fullSchedule[numberOfCycles] = cycleSchedule;
-
-        allCycles.push(cycleSchedule);
+    function getSchedule() public view returns (CycleSchedule[] memory) {
+        return allCycles;
     }
 
     function getCurrentCycle() public view returns (CycleSchedule memory) {
@@ -99,8 +213,8 @@ contract xMooneyVault is Ownable {
 
         for (uint256 index = 0; index < numberOfCycles; index++) {
             if (
-                allCycles[index].halvingStartDate < asOf &&
-                allCycles[index].halvingEndDate >= asOf
+                allCycles[index].timestamp < asOf &&
+                allCycles[index].endTimestamp >= asOf
             ) {
                 CurrentCycle = allCycles[index];
                 break;
@@ -108,21 +222,45 @@ contract xMooneyVault is Ownable {
         }
 
         return CurrentCycle;
-    } 
+    }
 
     function getCirculatingSupply() public view returns (uint256) {
         uint256 total = 0;
-        total += IERC20(xMooneyContractAddress).balanceOf(0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC);
-        total += IERC20(xMooneyContractAddress).balanceOf(0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65);
-            
-        return IERC20(xMooneyContractAddress).totalSupply() - total;
-    } 
 
-    function queryERC20Balance(address _tokenAddress, address _addressToQuery) view public returns (uint) {
+        for (
+            uint256 index = 0;
+            index < circulationExcludedAddresses.length;
+            index++
+        ) {
+            total += IERC20(xMooneyContractAddress).balanceOf(
+                circulationExcludedAddresses[index]
+            );
+
+            if (index > 10)
+            {
+                break;
+            }
+        }        
+
+        return IERC20(xMooneyContractAddress).totalSupply() - total;
+    }
+
+    function queryERC20Balance(address _tokenAddress, address _addressToQuery)
+        public
+        view
+        returns (uint256)
+    {
         return IERC20(_tokenAddress).balanceOf(_addressToQuery);
     }
 
-    function transferAnyERC20Token(address tokenAddress, address recipient, uint amount) external onlyOwner {
-        require(IERC20(tokenAddress).transfer(recipient, amount), "transfer failed!");
-    }    
+    function transferAnyERC20Token(
+        address tokenAddress,
+        address recipient,
+        uint256 amount
+    ) external onlyOwner {
+        require(
+            IERC20(tokenAddress).transfer(recipient, amount),
+            "transfer failed!"
+        );
+    }
 }
