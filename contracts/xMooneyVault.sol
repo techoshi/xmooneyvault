@@ -6,20 +6,22 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-// import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./DateTimeLib.sol";
 import "hardhat/console.sol";
 
-contract xMooneyVault is Ownable {
+contract xMooneyVault is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     // using Counters for Counters.Counter;
 
     using Strings for uint256;
 
+    uint256 public maxReleaseSize = 1000000;
+    uint256 public callReward = 3; //3%
     uint256 public genesisDate = 1623456000; //June 12, 2021
     uint256 private startingCirculatingBalance = 1000000000; //Dev Allotment
-    uint256 private initialCycleTokenDisbursement = 2625000000; //2,625,000,000
+    uint256 private initialCycleTokenDisbursement = 2500000000; //2,500,000,000
     uint256 private numberOfCycles = 0;
     uint256 private startingCycleID = 1;
     uint256 private numberOfCyclesToLoad = 50;
@@ -29,29 +31,28 @@ contract xMooneyVault is Ownable {
     address[] public circulationExcludedAddresses;
     bool public active = true;
 
+    address private whereToSendTokens = 0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65;
+
     struct CycleSchedule {
         string title;
         uint256 cycleID;
         uint256 disbursementRate;
         uint256 disbursementAmount;
-        // uint256 halvingStartDate;
-        // uint256 halvingEndDate;
-        // uint256 releaseRate;
         uint16 year;
         uint8 month;
-        uint8 day;
         uint256 timestamp;
         uint16 endYear;
         uint8 endMonth;
-        uint8 endDay;
         uint256 endTimestamp;
+        uint256 totalTicks;
+        uint256 tokensPerTick;
     }
 
     mapping(uint256 => CycleSchedule) fullSchedule;
 
     CycleSchedule[] public allCycles;
 
-    constructor(address _token, address[] memory excludedAddresses) {
+    constructor(address _token, address[] memory excludedAddresses, uint8 cycleDepth) {
         xMooneyContractAddress = _token;
         // LoadUpSchedule();
         CycleSchedule memory genesis = CycleSchedule({
@@ -61,15 +62,19 @@ contract xMooneyVault is Ownable {
             disbursementAmount: initialCycleTokenDisbursement,
             year: 2021,
             month: 6,
-            day: 12,
             timestamp: DateTimeLib.toTimestamp(2021, 6, 12),
             endYear: 2022,
             endMonth: 3,
-            endDay: 11,
-            endTimestamp: DateTimeLib.toTimestamp(2022, 3, 11, 59, 59)
+            endTimestamp: DateTimeLib.toTimestamp(2022, 3, 11, 59, 59),
+            totalTicks: 0,
+            tokensPerTick: 0
         });
+
+        genesis.totalTicks = genesis.endTimestamp - genesis.timestamp;
+        genesis.tokensPerTick = genesis.disbursementAmount / genesis.totalTicks;
+
         allCycles.push(genesis);
-        setTokenSchedule(30);
+        setTokenSchedule(cycleDepth);
         circulationExcludedAddresses = excludedAddresses;
     }
 
@@ -180,15 +185,28 @@ contract xMooneyVault is Ownable {
             nextCycle.endTimestamp = DateTimeLib.toTimestamp(
                 nextCycle.endYear,
                 nextCycle.endMonth,
-                nextCycle.endDay,
+                11,
                 59,
                 59
             );
+
+            nextCycle.totalTicks = nextCycle.endTimestamp - nextCycle.timestamp;
+            nextCycle.tokensPerTick =
+                nextCycle.disbursementAmount /
+                nextCycle.totalTicks;
 
             allCycles.push(nextCycle);
         }
 
         return allCycles;
+    }
+
+    function updateCallerReward(uint256 newReward) external onlyOwner {
+        callReward = newReward;
+    }
+
+    function updateMaxTokenRelease(uint256 newAmount) external onlyOwner {
+        maxReleaseSize = newAmount;
     }
 
     function getSchedule() public view returns (CycleSchedule[] memory) {
@@ -211,6 +229,76 @@ contract xMooneyVault is Ownable {
         }
 
         return CurrentCycle;
+    }
+
+    function circulationLogic(uint256 timestamp)
+        private
+        view
+        returns (uint256)
+    {
+        uint256 asOf = timestamp;
+        CycleSchedule memory CurrentCycle;
+
+        uint256 tokensThatShouldBeCirculating = 0;
+
+        for (uint256 index = 0; index < allCycles.length; index++) {
+            if (
+                allCycles[index].timestamp < asOf &&
+                allCycles[index].endTimestamp >= asOf
+            ) {
+                CurrentCycle = allCycles[index];
+                break;
+            }
+
+            tokensThatShouldBeCirculating += allCycles[index]
+                .disbursementAmount;
+        }
+
+        tokensThatShouldBeCirculating +=
+            (asOf - CurrentCycle.timestamp) *
+            CurrentCycle.tokensPerTick;
+
+        tokensThatShouldBeCirculating += startingCirculatingBalance;
+
+        return tokensThatShouldBeCirculating;
+    }
+
+    function getMaxTokensThatShouldNowBeCirculating()
+        public
+        view
+        returns (uint256)
+    {
+        uint256 asOf = block.timestamp;
+
+        return circulationLogic(asOf);
+    }
+
+    function getMaxTokensThatShouldBeCirculatingInFuture(uint16 year, uint8 month, uint8 day, uint8 minute, uint8 second)
+        public
+        view
+        returns (uint256)
+    {
+        uint256 asOf = DateTimeLib.toTimestamp(year, month, day, minute, second);
+
+        return circulationLogic(asOf);
+    }
+
+    function releaseTokens() external nonReentrant {
+        
+        uint256 asOf = block.timestamp;
+
+        uint256 amountOfTokens = circulationLogic(asOf);      
+        amountOfTokens = amountOfTokens > maxReleaseSize ? maxReleaseSize : amountOfTokens;  
+        uint256 methodCallerRewards = SafeMath.div(SafeMath.mul(amountOfTokens, callReward), 100); 
+        uint256 sellToMarket = SafeMath.div(SafeMath.mul(amountOfTokens, 100-callReward), 100); 
+
+        require(IERC20(xMooneyContractAddress).transfer(msg.sender, methodCallerRewards), "transfer to Caller failed");
+        require(IERC20(xMooneyContractAddress).transfer(whereToSendTokens, sellToMarket), "transfer to LP failed");
+    }
+
+    function transferContractTokens(address destination, uint256 amount) public onlyOwner
+    {        
+        require(IERC20(xMooneyContractAddress).transfer(destination, amount), "transfer failed");
     }
 
     function getCirculatingSupply() public view returns (uint256) {
