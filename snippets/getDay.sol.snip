@@ -1,0 +1,33 @@
+    function getDay() public view returns (string memory) {
+        uint8 day2 = DateTimeLib.getWeekday(block.timestamp);
+
+        if (day2 == 0) {
+            return "Sunday";
+        }
+
+        if (day2 == 1) {
+            return "Monday";
+        }
+
+        if (day2 == 2) {
+            return "Tuesday";
+        }
+
+        if (day2 == 3) {
+            return "Wednesday";
+        }
+
+        if (day2 == 4) {
+            return "Thursday";
+        }
+
+        if (day2 == 5) {
+            return "Friday";
+        }
+
+        if (day2 == 6) {
+            return "Saturday";
+        }
+
+        return "";
+    }

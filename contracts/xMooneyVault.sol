@@ -2,50 +2,56 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "hardhat/console.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-// import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./DateTimeLib.sol";
-import "hardhat/console.sol";
+
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
+interface IUniswapV2Factory {
+    function createPair(address tokenA, address tokenB)
+        external
+        returns (address pair);
+}
+
+contract xMooneyVault is Ownable, ReentrancyGuard {
     string private _NAME;
     string private _SYMBOL;
-    uint256 private _DECIMALS;
+    uint256 private _DECIMALS = 9;
 
     using SafeMath for uint256;
     // using Counters for Counters.Counter;
 
     using Strings for uint256;
 
-    uint256 public maxReleaseSize = 1000000;
-    uint256 public callReward = 3; //3%
     uint256 public genesisDate = 1623456000; //June 12, 2021
-    uint256 private startingCirculatingBalance = 1000000000; //Dev Allotment
-    uint256 private initialCycleTokenDisbursement = 2500000000; //2,500,000,000
+    uint256 public callReward = 30; //3%
+    uint256 private FOUNDER_ALLOTMENT = 1000000000000000000; //1,000,000,000
+    uint256 private CREATION_UNIT_ALLOTMENT = 2000000000000000000; //2,000,000,000
+    uint256 private initialCycleTokenDisbursement = 2125000000000000000; //2,125,000,000
+    uint256 public maxReleaseSize = 1000000000; //1,000,000
     uint256 private numberOfCycles = 0;
     uint256 private startingCycleID = 1;
     uint256 private numberOfCyclesToLoad = 50;
     uint8 private cycleDurationInMonths = 9;
     uint16 private currentNoCycle = 0;
+
     address private contractTokenAddress;
     address[] public circulationExcludedAddresses;
-    bool public active = true;
-
-    address private whereToSendTokens =
-        0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65; //Dummy Address
-    address internal UNISWAP_ROUTER_ADDRESS =
-        0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    address internal SWAP_ROUTER_ADDRESS;
+    address private swapV2Pair;
 
     IUniswapV2Router01 public uniswapLPRouter;
     IUniswapV2Router02 public uniswapRouter;
-    IERC20 public something;
+
+    dividingStruct private thisDividingStruct = dividingStruct({
+        divider: 1000
+    });
 
     struct CycleSchedule {
         string title;
@@ -62,6 +68,10 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         uint256 tokensPerTick;
     }
 
+    struct dividingStruct {
+        uint256 divider;
+    }
+
     mapping(uint256 => CycleSchedule) fullSchedule;
 
     CycleSchedule[] public allCycles;
@@ -73,9 +83,9 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         address[] memory excludedAddresses,
         uint8 cycleDepth,
         address Swap_Router_Address
-    ) ERC20(_name, _symbol) {
-        // _NAME = _name;
-        // _SYMBOL = _symbol;
+    ) {
+        _NAME = _name;
+        _SYMBOL = _symbol;
         contractTokenAddress = _token;
         // LoadUpSchedule();
         CycleSchedule memory genesis = CycleSchedule({
@@ -100,46 +110,40 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         setTokenSchedule(cycleDepth);
         circulationExcludedAddresses = excludedAddresses;
 
-        uniswapLPRouter = IUniswapV2Router01(Swap_Router_Address);
-        uniswapRouter = IUniswapV2Router02(Swap_Router_Address);
+        SWAP_ROUTER_ADDRESS = Swap_Router_Address;
+        uniswapLPRouter = IUniswapV2Router01(SWAP_ROUTER_ADDRESS);
+        uniswapRouter = IUniswapV2Router02(SWAP_ROUTER_ADDRESS);
+    }
+
+    function decimals() public view returns (uint8) {
+        return uint8(_DECIMALS);
+    }
+
+    function totalSupply() public view returns (uint256) {
+        return IERC20(contractTokenAddress).balanceOf(address(this));
+    }
+
+    function queryERC20Balance(address _tokenAddress, address _addressToQuery)
+        public
+        view
+        returns (uint256)
+    {
+        return IERC20(_tokenAddress).balanceOf(_addressToQuery);
+    }
+
+    function transferAnyERC20Token(
+        address tokenAddress,
+        address recipient,
+        uint256 amount
+    ) external onlyOwner {
+        require(
+            IERC20(tokenAddress).transfer(recipient, amount),
+            "transfer failed!"
+        );
     }
 
     function genesisTimestamp() public pure returns (uint256) {
         return DateTimeLib.toTimestamp(2021, 6, 12);
-    }
-
-    function getDay2() public view returns (string memory) {
-        uint8 day2 = DateTimeLib.getWeekday(block.timestamp);
-
-        if (day2 == 0) {
-            return "Sunday";
-        }
-
-        if (day2 == 1) {
-            return "Monday";
-        }
-
-        if (day2 == 2) {
-            return "Tuesday";
-        }
-
-        if (day2 == 3) {
-            return "Wednesday";
-        }
-
-        if (day2 == 4) {
-            return "Thursday";
-        }
-
-        if (day2 == 5) {
-            return "Friday";
-        }
-
-        if (day2 == 6) {
-            return "Saturday";
-        }
-
-        return "";
     }
 
     function currentTimestamp() public view returns (uint256) {
@@ -243,6 +247,10 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
     }
 
     function updateCallerReward(uint256 newRewardAmount) external onlyOwner {
+        require(
+            newRewardAmount >= 0 && newRewardAmount <= 1000,
+            "Reward must be between 0 and 1000"
+        );
         callReward = newRewardAmount;
     }
 
@@ -299,7 +307,8 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
             (asOf - CurrentCycle.timestamp) *
             CurrentCycle.tokensPerTick;
 
-        tokensThatShouldBeCirculating += startingCirculatingBalance;
+        tokensThatShouldBeCirculating += (FOUNDER_ALLOTMENT +
+            CREATION_UNIT_ALLOTMENT);
 
         return tokensThatShouldBeCirculating;
     }
@@ -313,14 +322,12 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         return circulationLogic(asOf);
     }
 
-    function getNextMaxTokenRelease()
-        public
-        view
-        returns (uint256)
-    {
+    function getNextMaxTokenRelease() public view returns (uint256) {
         uint256 asOf = block.timestamp;
         uint256 pendingRelease = circulationLogic(asOf);
-        uint256 NextRelease = pendingRelease > maxReleaseSize ? maxReleaseSize : pendingRelease;
+        uint256 NextRelease = pendingRelease > maxReleaseSize
+            ? maxReleaseSize
+            : pendingRelease;
 
         return NextRelease;
     }
@@ -346,22 +353,31 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         uint256 asOf = block.timestamp;
 
         uint256 amountOfTokens = circulationLogic(asOf);
+
         amountOfTokens = amountOfTokens > maxReleaseSize
             ? maxReleaseSize
             : amountOfTokens;
+
         uint256 methodCallerRewards = SafeMath.div(
             SafeMath.mul(amountOfTokens, callReward),
-            100
-        );
-        uint256 sellToMarket = SafeMath.div(
-            SafeMath.mul(amountOfTokens, 100 - callReward),
-            100
+            thisDividingStruct.divider
         );
 
-        if (
-            IERC20(contractTokenAddress).balanceOf(address(this)) >
-            amountOfTokens
-        ) {
+        amountOfTokens = SafeMath.sub(amountOfTokens, methodCallerRewards);
+
+        uint256 sellToMarket = SafeMath.div(
+            SafeMath.mul(
+                amountOfTokens,
+                (thisDividingStruct.divider - callReward)
+            ),
+            thisDividingStruct.divider
+        );
+
+        uint256 contractBalance = IERC20(contractTokenAddress).balanceOf(
+            address(this)
+        );
+
+        if (contractBalance > amountOfTokens) {
             require(
                 IERC20(contractTokenAddress).transfer(
                     msg.sender,
@@ -370,32 +386,81 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
                 "transfer to Caller failed"
             );
 
-            uint256 amountToSell = SafeMath.div(sellToMarket, 2);
-            uint256 amountToBakeintoLP = SafeMath.div(sellToMarket, 2);
+            uint256 amountToSell = SafeMath.div(
+                SafeMath.mul(sellToMarket, 550),
+                thisDividingStruct.divider
+            );
+
+            uint256 amountToBakeintoLP = SafeMath.div(
+                SafeMath.mul(sellToMarket, 450),
+                thisDividingStruct.divider
+            );
+            console.log("Amount To Sell");
+            console.log(amountToSell);
+
+            uint256 ethAmount = getEstimatedSourceTokenforContractToken(uniswapRouter.WETH(),
+                amountToSell)[0];
+            //Sell Token into LP and then User Value to Bake LP
+            convertEthToContractToken(
+                uniswapRouter.WETH(),
+                amountToSell,
+                ethAmount
+            );
+
+            addLP(amountToBakeintoLP);
+        }
+    }
+
+    function releaseTokens1() external nonReentrant {
+        uint256 asOf = block.timestamp;
+
+        uint256 amountOfTokens = circulationLogic(asOf);
+
+        amountOfTokens = amountOfTokens > maxReleaseSize
+            ? maxReleaseSize
+            : amountOfTokens;
+
+        uint256 methodCallerRewards = SafeMath.div(
+            SafeMath.mul(amountOfTokens, callReward),
+            thisDividingStruct.divider
+        );
+
+        amountOfTokens = SafeMath.sub(amountOfTokens, methodCallerRewards);
+
+        uint256 sellToMarket = SafeMath.div(
+            SafeMath.mul(
+                amountOfTokens,
+                (thisDividingStruct.divider - callReward)
+            ),
+            thisDividingStruct.divider
+        );
+
+        uint256 contractBalance = IERC20(contractTokenAddress).balanceOf(
+            address(this)
+        );
+
+        if (contractBalance > amountOfTokens) {
+            require(
+                IERC20(contractTokenAddress).transfer(
+                    msg.sender,
+                    methodCallerRewards
+                ),
+                "transfer to Caller failed"
+            );
+
+            uint256 amountToSell = SafeMath.div(
+                SafeMath.mul(sellToMarket, (thisDividingStruct.divider - 550)),
+                thisDividingStruct.divider
+            );
+
+            uint256 ethAmount = getEstimatedSourceTokenforContractToken(uniswapRouter.WETH(),
+                amountToSell)[0];
 
             //Sell Token into LP and then User Value to Bake LP
-            convertSourceTokenToContractToken(
+            convertEthToContractToken(
                 uniswapRouter.WETH(),
-                amountToSell
-            );
-            uint256 deadline = block.timestamp + 15;
-            uint256[]
-                memory amountOfEth = getEstimatedSourceTokenforContractToken(
-                    uniswapRouter.WETH(),
-                    amountToBakeintoLP
-                );
-
-            uint256 minAmountOfValueToPair = SafeMath.div(SafeMath.mul(amountOfEth[0], 100 - 0),100);
-            uint256 minAmountToBakeintoLP = SafeMath.div(SafeMath.mul(amountToSell, 100 - 20),100);
-
-            IERC20(contractTokenAddress).approve(uniswapLPRouter, amountToBakeintoLP);
-            uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
-                contractTokenAddress,
-                amountToBakeintoLP,
-                minAmountToBakeintoLP,
-                minAmountOfValueToPair,
-                address(this),
-                deadline
+                amountToSell,
+                ethAmount
             );
         }
     }
@@ -430,29 +495,10 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         return IERC20(contractTokenAddress).totalSupply() - total;
     }
 
-    function queryERC20Balance(address _tokenAddress, address _addressToQuery)
-        public
-        view
-        returns (uint256)
-    {
-        return IERC20(_tokenAddress).balanceOf(_addressToQuery);
-    }
-
-    function transferAnyERC20Token(
-        address tokenAddress,
-        address recipient,
-        uint256 amount
-    ) external onlyOwner {
-        require(
-            IERC20(tokenAddress).transfer(recipient, amount),
-            "transfer failed!"
-        );
-    }
-
     // important to receive ETH
     receive() external payable {}
 
-    function sendBNB(address payable thisAddress, uint256 amount)
+    function transferNativeToken(address payable thisAddress, uint256 amount)
         external
         onlyOwner
         nonReentrant
@@ -460,17 +506,16 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         thisAddress.transfer(amount);
     }
 
-    function addLP(uint256 addLPTokenAmount) external nonReentrant {
+    function addLP(uint256 addLPTokenAmount) private {
         uint256 deadline = block.timestamp + 15;
 
         uint256[] memory amountOfEth = getEstimatedSourceTokenforContractToken(
             uniswapRouter.WETH(),
             addLPTokenAmount
         );
-        _approve1(
-            address(this),
+        IERC20(contractTokenAddress).approve(
             address(uniswapLPRouter),
-            10000000000000000000
+            addLPTokenAmount
         );
         //uniswapLPRouter.approve(address(this), 1);
         uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
@@ -483,17 +528,20 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         );
     }
 
-    function addLP2(uint256 addLPTokenAmount) external nonReentrant {
+    function addLPExternal(uint256 addLPTokenAmount) external nonReentrant {
+        addLP(addLPTokenAmount);
+    }
+
+    function addLPAndTransfer(uint256 addLPTokenAmount) external nonReentrant {
         uint256 deadline = block.timestamp + 15;
 
         uint256[] memory amountOfEth = getEstimatedSourceTokenforContractToken(
             uniswapRouter.WETH(),
             addLPTokenAmount
         );
-        _approve1(
-            address(this),
+        IERC20(contractTokenAddress).approve(
             address(uniswapLPRouter),
-            10000000000000000000
+            addLPTokenAmount
         );
         uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
             contractTokenAddress,
@@ -505,36 +553,23 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         );
     }
 
-    function _approve1(
-        address owner,
-        address spender,
-        uint256 amount
-    ) private {
-        require(owner != address(0), "ERC20: approve from the zero address");
-        require(spender != address(0), "ERC20: approve to the zero address");
-        //  _allowances[owner][spender] = amount;
-        emit Approval(owner, spender, amount);
-    }
-
-    function approveContract(uint256 amount) public onlyOwner {
-        _approve1(address(this), address(uniswapLPRouter), amount);
-    }
-
-    function approveContract2(
-        address sourceAddy,
+    function approveContract(
+        address sourceAddress,
         address contractAddy,
         uint256 amount
     ) public onlyOwner {
-        IERC20(sourceAddy).approve(contractAddy, amount);
-    }
+        IERC20(sourceAddress).approve(contractAddy, amount);
+    }    
 
     //Swap Stuff
-    function convertSourceTokenToContractToken(
+    function convertEthToContractToken(
         address exchangeToken,
-        uint256 exchangeTokenAmount
-    ) public payable {
+        uint256 exchangeTokenAmount,
+        uint256 ethAMount
+    ) private {
         uint256 deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
-        uniswapRouter.swapETHForExactTokens{value: msg.value}(
+        
+        uniswapRouter.swapETHForExactTokens{value: ethAMount }(
             exchangeTokenAmount,
             getPathForSourceTokentoContractToken(exchangeToken),
             address(this),
@@ -544,6 +579,13 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
         // refund leftover ETH to user
         (bool success, ) = msg.sender.call{value: address(this).balance}("");
         require(success, "refund failed");
+    }
+
+    function convertEthToContractToken2(
+        address exchangeToken,
+        uint256 exchangeTokenAmount
+    ) public payable {
+        convertEthToContractToken(exchangeToken, exchangeTokenAmount, msg.value);
     }
 
     function getEstimatedSourceTokenforContractToken(
@@ -556,6 +598,17 @@ contract xMooneyVault1 is ERC20, Ownable, ReentrancyGuard {
                 getPathForSourceTokentoContractToken(exchangeToken)
             );
     }
+
+    // function getEstimatedEthforContractToken(
+    //     address exchangeToken,
+    //     uint256 contractTokenAmount
+    // ) public view returns (uint256[] memory) {
+    //     return
+    //         uniswapLPRouter.getAmountsOut(
+    //             contractTokenAmount,
+    //             getPathForSourceTokentoContractToken(exchangeToken)
+    //         );
+    // }
 
     function getPathForSourceTokentoContractToken(address exchangeToken)
         private
