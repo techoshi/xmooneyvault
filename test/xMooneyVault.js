@@ -26,7 +26,7 @@ if (true == true)
             
             //Step 2 Load xMooney Vault Contract
             const xMooneyVault = await ethers.getContractFactory("xMooneyVault");
-            xMooneyVaultContract = await xMooneyVault.deploy(xMooneyContract.address, [contractOwner.address, _2.address], 28);        
+            xMooneyVaultContract = await xMooneyVault.deploy("xMooney Bank", "xMBank",xMooneyContract.address, [contractOwner.address, _2.address], 28, "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3");        
             returnObject.xMooneyVaultAddress = xMooneyVaultContract.address;
             await xMooneyVaultContract.deployed();            
         });
@@ -90,7 +90,10 @@ if (true == true)
             returnObject.Caller = { address : LP.address, amount: await xMooneyContract.balanceOf(contractOwner.address) }; 
             returnObject.LP = { address : LP.address, amount:await xMooneyContract.balanceOf(LP.address) }; 
             returnObject.vaultBalance  = { address : returnObject.xMooneyVaultAddress, amount:  await xMooneyContract.balanceOf(returnObject.xMooneyVaultAddress) };
+            
+            await xMooneyVaultContract.transferContractTokens(contractOwner.address, await xMooneyContract.balanceOf(xMooneyVaultContract.address)); 
 
+            returnObject.vaultBalancePurged  = { address : returnObject.xMooneyVaultAddress, amount:  await xMooneyContract.balanceOf(returnObject.xMooneyVaultAddress) };
             //console.log(returnObject); 
         });
 
@@ -98,8 +101,7 @@ if (true == true)
             const circulating = await xMooneyVaultContract.getCirculatingSupply();
             
             returnObject.circulating = circulating;                              
-        });     
-        
+        });             
         
         it("getMaxTokensThatShouldNowBeCirculating", async function () {            
             const result = await xMooneyVaultContract.getMaxTokensThatShouldNowBeCirculating();
@@ -116,7 +118,7 @@ if (true == true)
             returnObject.LP = { address : LP.address, amount:await xMooneyContract.balanceOf(LP.address) }; 
             returnObject.vaultCaller1 = { address : nonCirculatingWallet2.address, amount:await xMooneyContract.balanceOf(nonCirculatingWallet2.address) };
             returnObject.vaultCaller2 = { address : nonCirculatingWallet1.address, amount:await xMooneyContract.balanceOf(nonCirculatingWallet1.address) };
-            returnObject.vaultBalance  = { address : returnObject.xMooneyVaultAddress, amount:  await xMooneyContract.balanceOf(returnObject.xMooneyVaultAddress) };
+            returnObject.vaultBalanceAfterTrigger  = { address : returnObject.xMooneyVaultAddress, amount:  await xMooneyContract.balanceOf(returnObject.xMooneyVaultAddress) };
         });    
         
         it("getMaxTokensThatShouldBeCirculatingInFuture", async function () {            

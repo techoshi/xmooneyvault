@@ -25,7 +25,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 
-let DestinationNetwork = "hardhat";
+let DestinationNetwork = process.env.SOURCE_CHAIN; //"testnet";
 let networks = {};
 let token = "ETH";
 switch (DestinationNetwork) {
@@ -82,7 +82,7 @@ module.exports = {
     version: "0.8.11",
     settings: {
       optimizer: {
-        enabled: false,
+        enabled: true,
         runs: 2000,
       },
     }

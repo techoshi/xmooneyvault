@@ -1,12 +1,15 @@
-// module.exports = [
-//     'xMooney', 'xM', 9, 21000000000,3,0,7, '0x666A6692D6F495c514492FD4a38Ec9D2891AFc92', '0xf5e3D593FC734b267b313240A0FcE8E0edEBD69a'
-// ];
+require('dotenv').config();
 
-
-module.exports = [
-    0xEEFE69a45CB83d8e62d4ba22F7068480BE09b78c,
-    [
-        0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC,
-        0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65
+console.log("Source Chain" + process.env.SOURCE_CHAIN);
+if (process.env.SOURCE_CHAIN == 'testnet') {
+    module.exports = [
+        "xMooney Bank1", "xMBank1", "0xEEFE69a45CB83d8e62d4ba22F7068480BE09b78c", [], 3, "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3"
     ]
-]
+}
+
+if (process.env.SOURCE_CHAIN == 'bsc') {
+    module.exports = [
+        "xMooney Bank", "xMBank", "0x98631c69602083d04f83934576a53e2a133d482f", [], 28, "0x10ED43C718714eb63d5aA57B78B54704E256024E"
+    ]
+}
+
