@@ -616,7 +616,6 @@ contract xMooneyToken is Context, IBEP20, Ownable {
     function setAsCharityAccount(address account) external onlyOwner() {
 		FeeAddress = account;
     }
-
 	
 	function updateFee(uint256 _txFee,uint256 _burnFee,uint256 _charityFee) onlyOwner() public{
 		require(_txFee < 100 && _burnFee < 100 && _charityFee < 100);
@@ -627,10 +626,6 @@ contract xMooneyToken is Context, IBEP20, Ownable {
 		ORIG_BURN_FEE = _BURN_FEE;
 		ORIG_CHARITY_FEE = _CHARITY_FEE;
 	}
-	
-
-
-
 
     function _approve(address owner, address spender, uint256 amount) private {
         require(owner != address(0), "TOKEN20: approve from the zero address");

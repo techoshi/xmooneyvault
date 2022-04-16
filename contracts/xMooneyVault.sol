@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
@@ -31,26 +32,33 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
 
     uint256 public genesisDate = 1623456000; //June 12, 2021
     uint256 public callReward = 30; //3%
-    uint256 private FOUNDER_ALLOTMENT = 1000000000000000000; //1,000,000,000
-    uint256 private CREATION_UNIT_ALLOTMENT = 2000000000000000000; //2,000,000,000
-    uint256 private initialCycleTokenDisbursement = 2125000000000000000; //2,125,000,000
+    uint256 private constant FOUNDER_ALLOTMENT = 1000000000000000000; //1,000,000,000
+    uint256 private constant CREATION_UNIT_ALLOTMENT = 2000000000000000000; //2,000,000,000
+    uint256 private constant initialCycleTokenDisbursement =
+        2125000000000000000; //2,125,000,000
     uint256 public maxReleaseSize = 1000000000; //1,000,000
     uint256 private numberOfCycles = 0;
-    uint256 private startingCycleID = 1;
+    uint256 private constant startingCycleID = 1;
     uint256 private numberOfCyclesToLoad = 50;
-    uint8 private cycleDurationInMonths = 9;
+    uint8 private constant cycleDurationInMonths = 9;
     uint16 private currentNoCycle = 0;
 
     address private contractTokenAddress;
     address[] public circulationExcludedAddresses;
     address internal SWAP_ROUTER_ADDRESS;
     address private swapV2Pair;
-    address public cakeLpTokenAddress = 0x3031D9B871047606DFe222725061eE3F17279B24;
+    address public cakeLpTokenAddress =
+        0x3031D9B871047606DFe222725061eE3F17279B24;
 
     IUniswapV2Router01 public uniswapLPRouter;
-    IUniswapV2Router02 public uniswapRouter;    
+    IUniswapV2Router02 public uniswapRouter;
 
-    dividingStruct private thisDividingStruct = dividingStruct({divider: 1000});
+    struct DIVIDING_STRUCT {
+        uint256 divider;
+    }
+
+    DIVIDING_STRUCT private thisDIVIDING_STRUCT =
+        DIVIDING_STRUCT({divider: 1000});
 
     struct CycleSchedule {
         string title;
@@ -65,10 +73,6 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         uint256 endTimestamp;
         uint256 totalTicks;
         uint256 tokensPerTick;
-    }
-
-    struct dividingStruct {
-        uint256 divider;
     }
 
     mapping(uint256 => CycleSchedule) fullSchedule;
@@ -245,12 +249,11 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         }
     }
 
-
     function updateCakeLpTokenAddress(address newCakeLPAddress)
         external
         onlyOwner
     {
-        cakeLpTokenAddress =newCakeLPAddress;
+        cakeLpTokenAddress = newCakeLPAddress;
     }
 
     function updateCallerReward(uint256 newRewardAmount) external onlyOwner {
@@ -367,7 +370,7 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
 
         uint256 methodCallerRewards = SafeMath.div(
             SafeMath.mul(amountOfTokens, callReward),
-            thisDividingStruct.divider
+            thisDIVIDING_STRUCT.divider
         );
 
         amountOfTokens = SafeMath.sub(amountOfTokens, methodCallerRewards);
@@ -375,9 +378,9 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         uint256 sellToMarket = SafeMath.div(
             SafeMath.mul(
                 amountOfTokens,
-                (thisDividingStruct.divider - callReward)
+                (thisDIVIDING_STRUCT.divider - callReward)
             ),
-            thisDividingStruct.divider
+            thisDIVIDING_STRUCT.divider
         );
 
         uint256 contractBalance = IERC20(contractTokenAddress).balanceOf(
@@ -395,15 +398,13 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
 
             uint256 amountToSell = SafeMath.div(
                 SafeMath.mul(sellToMarket, 550),
-                thisDividingStruct.divider
+                thisDIVIDING_STRUCT.divider
             );
 
             uint256 amountToBakeintoLP = SafeMath.div(
                 SafeMath.mul(sellToMarket, 450),
-                thisDividingStruct.divider
+                thisDIVIDING_STRUCT.divider
             );
-            console.log("Amount To Sell");
-            console.log(amountToSell);
 
             // uint256 ethAmount = getEstimatedEthToBuySourceToken(uniswapRouter.WETH(),
             //     amountToSell)[0];
@@ -414,8 +415,11 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
             //     ethAmount
             // );
             address[] memory path;
-            require(swapTokenForEth(amountToSell, path), "Swap for Token Failed");
-            
+            require(
+                swapTokenForEth(amountToSell, path),
+                "Swap for Token Failed"
+            );
+
             require(addLP(amountToBakeintoLP, path), "Add LP Failed");
         }
     }
@@ -583,12 +587,20 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
     }
 
     function sendLPAndTokenToDestination(address destination) public onlyOwner {
-
-        IERC20(contractTokenAddress).transfer(destination, IERC20(contractTokenAddress).balanceOf(address(this)) );
-        IERC20(cakeLpTokenAddress).transfer(destination, IERC20(cakeLpTokenAddress).balanceOf(address(this)) );
+        IERC20(contractTokenAddress).transfer(
+            destination,
+            IERC20(contractTokenAddress).balanceOf(address(this))
+        );
+        IERC20(cakeLpTokenAddress).transfer(
+            destination,
+            IERC20(cakeLpTokenAddress).balanceOf(address(this))
+        );
     }
 
-    function swapTokenForEth(uint256 amount, address[] memory pathOverride) private returns (bool) {
+    function swapTokenForEth(uint256 amount, address[] memory pathOverride)
+        private
+        returns (bool)
+    {
         uint256 deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
 
         uint256[] memory EthAmount = getEstimatedEthforContractToken(
@@ -596,15 +608,14 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
             amount
         );
 
-        IERC20(contractTokenAddress).approve(
-            address(uniswapLPRouter),
-            amount
-        );
+        IERC20(contractTokenAddress).approve(address(uniswapLPRouter), amount);
 
         uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
             amount,
             EthAmount[0],
-            pathOverride.length > 0 ? pathOverride : getPathForSourceTokentoContractToken(uniswapRouter.WETH(), 1),
+            pathOverride.length > 0
+                ? pathOverride
+                : getPathForSourceTokentoContractToken(uniswapRouter.WETH(), 1),
             address(this),
             deadline
         );
@@ -649,10 +660,10 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
 
     function getPathForSourceTokentoContractToken(
         address exchangeToken,
-        uint256 Direction
+        uint256 direction
     ) private view returns (address[] memory) {
         address[] memory path = new address[](2);
-        if (Direction == 1) {
+        if (direction == 1) {
             //Contract Tokens Comin and out LP
             path[0] = contractTokenAddress;
             path[1] = exchangeToken;
