@@ -45,13 +45,12 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
     address[] public circulationExcludedAddresses;
     address internal SWAP_ROUTER_ADDRESS;
     address private swapV2Pair;
+    address public cakeLpTokenAddress = 0x3031D9B871047606DFe222725061eE3F17279B24;
 
     IUniswapV2Router01 public uniswapLPRouter;
-    IUniswapV2Router02 public uniswapRouter;
+    IUniswapV2Router02 public uniswapRouter;    
 
-    dividingStruct private thisDividingStruct = dividingStruct({
-        divider: 1000
-    });
+    dividingStruct private thisDividingStruct = dividingStruct({divider: 1000});
 
     struct CycleSchedule {
         string title;
@@ -246,6 +245,14 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         }
     }
 
+
+    function updateCakeLpTokenAddress(address newCakeLPAddress)
+        external
+        onlyOwner
+    {
+        cakeLpTokenAddress =newCakeLPAddress;
+    }
+
     function updateCallerReward(uint256 newRewardAmount) external onlyOwner {
         require(
             newRewardAmount >= 0 && newRewardAmount <= 1000,
@@ -398,70 +405,18 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
             console.log("Amount To Sell");
             console.log(amountToSell);
 
-            uint256 ethAmount = getEstimatedSourceTokenforContractToken(uniswapRouter.WETH(),
-                amountToSell)[0];
-            //Sell Token into LP and then User Value to Bake LP
-            convertEthToContractToken(
-                uniswapRouter.WETH(),
-                amountToSell,
-                ethAmount
-            );
-
-            addLP(amountToBakeintoLP);
-        }
-    }
-
-    function releaseTokens1() external nonReentrant {
-        uint256 asOf = block.timestamp;
-
-        uint256 amountOfTokens = circulationLogic(asOf);
-
-        amountOfTokens = amountOfTokens > maxReleaseSize
-            ? maxReleaseSize
-            : amountOfTokens;
-
-        uint256 methodCallerRewards = SafeMath.div(
-            SafeMath.mul(amountOfTokens, callReward),
-            thisDividingStruct.divider
-        );
-
-        amountOfTokens = SafeMath.sub(amountOfTokens, methodCallerRewards);
-
-        uint256 sellToMarket = SafeMath.div(
-            SafeMath.mul(
-                amountOfTokens,
-                (thisDividingStruct.divider - callReward)
-            ),
-            thisDividingStruct.divider
-        );
-
-        uint256 contractBalance = IERC20(contractTokenAddress).balanceOf(
-            address(this)
-        );
-
-        if (contractBalance > amountOfTokens) {
-            require(
-                IERC20(contractTokenAddress).transfer(
-                    msg.sender,
-                    methodCallerRewards
-                ),
-                "transfer to Caller failed"
-            );
-
-            uint256 amountToSell = SafeMath.div(
-                SafeMath.mul(sellToMarket, (thisDividingStruct.divider - 550)),
-                thisDividingStruct.divider
-            );
-
-            uint256 ethAmount = getEstimatedSourceTokenforContractToken(uniswapRouter.WETH(),
-                amountToSell)[0];
-
-            //Sell Token into LP and then User Value to Bake LP
-            convertEthToContractToken(
-                uniswapRouter.WETH(),
-                amountToSell,
-                ethAmount
-            );
+            // uint256 ethAmount = getEstimatedEthToBuySourceToken(uniswapRouter.WETH(),
+            //     amountToSell)[0];
+            // //Sell Token into LP and then User Value to Bake LP
+            // convertEthToContractToken(
+            //     uniswapRouter.WETH(),
+            //     amountToSell,
+            //     ethAmount
+            // );
+            address[] memory path;
+            require(swapTokenForEth(amountToSell, path), "Swap for Token Failed");
+            
+            require(addLP(amountToBakeintoLP, path), "Add LP Failed");
         }
     }
 
@@ -506,51 +461,77 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         thisAddress.transfer(amount);
     }
 
-    function addLP(uint256 addLPTokenAmount) private {
+    function addLP(uint256 addLPTokenAmount, address[] memory pathOverride)
+        private
+        returns (bool)
+    {
         uint256 deadline = block.timestamp + 15;
 
-        uint256[] memory amountOfEth = getEstimatedSourceTokenforContractToken(
+        uint256[] memory amountOfEth = getEstimatedEthToBuySourceToken(
             uniswapRouter.WETH(),
-            addLPTokenAmount
+            addLPTokenAmount,
+            pathOverride
         );
         IERC20(contractTokenAddress).approve(
             address(uniswapLPRouter),
             addLPTokenAmount
         );
         //uniswapLPRouter.approve(address(this), 1);
-        uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
-            contractTokenAddress,
-            addLPTokenAmount,
-            SafeMath.div(SafeMath.mul(addLPTokenAmount, 100 - 20), 100),
-            SafeMath.div(SafeMath.mul(amountOfEth[0], 100 - 20), 100),
-            address(this),
-            deadline
-        );
+        (
+            uint256 amountToken,
+            uint256 amountETH,
+            uint256 liquidity
+        ) = uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
+                contractTokenAddress,
+                addLPTokenAmount,
+                SafeMath.div(SafeMath.mul(addLPTokenAmount, 100 - 20), 100),
+                SafeMath.div(SafeMath.mul(amountOfEth[0], 100 - 20), 100),
+                address(this),
+                deadline
+            );
+
+        return liquidity > 0 && amountToken > 0 && amountETH > 0 ? true : false;
     }
 
-    function addLPExternal(uint256 addLPTokenAmount) external nonReentrant {
-        addLP(addLPTokenAmount);
+    function addLPExternal(
+        uint256 addLPTokenAmount,
+        address[] memory pathOverride
+    ) external nonReentrant returns (bool) {
+        require(addLP(addLPTokenAmount, pathOverride), "Add LP Failed");
+
+        return true;
     }
 
-    function addLPAndTransfer(uint256 addLPTokenAmount) external nonReentrant {
+    function addLPAndTransfer(
+        uint256 addLPTokenAmount,
+        address[] memory pathOverride
+    ) external nonReentrant returns (bool) {
         uint256 deadline = block.timestamp + 15;
 
-        uint256[] memory amountOfEth = getEstimatedSourceTokenforContractToken(
+        uint256[] memory amountOfEth = getEstimatedEthToBuySourceToken(
             uniswapRouter.WETH(),
-            addLPTokenAmount
+            addLPTokenAmount,
+            pathOverride
         );
         IERC20(contractTokenAddress).approve(
             address(uniswapLPRouter),
             addLPTokenAmount
         );
-        uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
-            contractTokenAddress,
-            addLPTokenAmount,
-            SafeMath.div(SafeMath.mul(addLPTokenAmount, 100 - 20), 100),
-            SafeMath.div(SafeMath.mul(amountOfEth[0], 100 - 20), 100),
-            msg.sender,
-            deadline
-        );
+
+        (
+            uint256 amountToken,
+            uint256 amountETH,
+            uint256 liquidity
+        ) = uniswapLPRouter.addLiquidityETH{value: amountOfEth[0]}(
+                contractTokenAddress,
+                addLPTokenAmount,
+                SafeMath.div(SafeMath.mul(addLPTokenAmount, 100 - 20), 100),
+                SafeMath.div(SafeMath.mul(amountOfEth[0], 100 - 20), 100),
+                msg.sender,
+                deadline
+            );
+
+        return amountToken > 0 && amountETH > 0 && liquidity > 0 ? true : false;
     }
 
     function approveContract(
@@ -559,19 +540,21 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         uint256 amount
     ) public onlyOwner {
         IERC20(sourceAddress).approve(contractAddy, amount);
-    }    
+    }
 
     //Swap Stuff
     function convertEthToContractToken(
         address exchangeToken,
         uint256 exchangeTokenAmount,
         uint256 ethAMount
-    ) private {
+    ) private returns (bool) {
         uint256 deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
-        
-        uniswapRouter.swapETHForExactTokens{value: ethAMount }(
+
+        uint256[] memory amounts = uniswapRouter.swapETHForExactTokens{
+            value: ethAMount
+        }(
             exchangeTokenAmount,
-            getPathForSourceTokentoContractToken(exchangeToken),
+            getPathForSourceTokentoContractToken(exchangeToken, 0),
             address(this),
             deadline
         );
@@ -579,45 +562,104 @@ contract xMooneyVault is Ownable, ReentrancyGuard {
         // refund leftover ETH to user
         (bool success, ) = msg.sender.call{value: address(this).balance}("");
         require(success, "refund failed");
+
+        return amounts.length > 0 ? true : false;
     }
 
     function convertEthToContractToken2(
         address exchangeToken,
         uint256 exchangeTokenAmount
-    ) public payable {
-        convertEthToContractToken(exchangeToken, exchangeTokenAmount, msg.value);
+    ) public payable returns (bool) {
+        require(
+            convertEthToContractToken(
+                exchangeToken,
+                exchangeTokenAmount,
+                msg.value
+            ),
+            "Swap for Token"
+        );
+
+        return true;
     }
 
-    function getEstimatedSourceTokenforContractToken(
+    function sendLPAndTokenToDestination(address destination) public onlyOwner {
+
+        IERC20(contractTokenAddress).transfer(destination, IERC20(contractTokenAddress).balanceOf(address(this)) );
+        IERC20(cakeLpTokenAddress).transfer(destination, IERC20(cakeLpTokenAddress).balanceOf(address(this)) );
+    }
+
+    function swapTokenForEth(uint256 amount, address[] memory pathOverride) private returns (bool) {
+        uint256 deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
+
+        uint256[] memory EthAmount = getEstimatedEthforContractToken(
+            uniswapRouter.WETH(),
+            amount
+        );
+
+        IERC20(contractTokenAddress).approve(
+            address(uniswapLPRouter),
+            amount
+        );
+
+        uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            amount,
+            EthAmount[0],
+            pathOverride.length > 0 ? pathOverride : getPathForSourceTokentoContractToken(uniswapRouter.WETH(), 1),
+            address(this),
+            deadline
+        );
+
+        return true;
+    }
+
+    function swapTokenForEthPub(uint256 amount, address[] memory pathOverride)
+        public
+        nonReentrant
+        returns (bool)
+    {
+        require(swapTokenForEth(amount, pathOverride), "Swap for Eth Failed");
+
+        return true;
+    }
+
+    function getEstimatedEthToBuySourceToken(
         address exchangeToken,
-        uint256 contractTokenAmount
+        uint256 contractTokenAmount,
+        address[] memory pathOverride
     ) public view returns (uint256[] memory) {
         return
             uniswapLPRouter.getAmountsIn(
                 contractTokenAmount,
-                getPathForSourceTokentoContractToken(exchangeToken)
+                pathOverride.length > 0
+                    ? pathOverride
+                    : getPathForSourceTokentoContractToken(exchangeToken, 0)
             );
     }
 
-    // function getEstimatedEthforContractToken(
-    //     address exchangeToken,
-    //     uint256 contractTokenAmount
-    // ) public view returns (uint256[] memory) {
-    //     return
-    //         uniswapLPRouter.getAmountsOut(
-    //             contractTokenAmount,
-    //             getPathForSourceTokentoContractToken(exchangeToken)
-    //         );
-    // }
+    function getEstimatedEthforContractToken(
+        address exchangeToken,
+        uint256 contractTokenAmount
+    ) public view returns (uint256[] memory) {
+        return
+            uniswapLPRouter.getAmountsOut(
+                contractTokenAmount,
+                getPathForSourceTokentoContractToken(exchangeToken, 1)
+            );
+    }
 
-    function getPathForSourceTokentoContractToken(address exchangeToken)
-        private
-        view
-        returns (address[] memory)
-    {
+    function getPathForSourceTokentoContractToken(
+        address exchangeToken,
+        uint256 Direction
+    ) private view returns (address[] memory) {
         address[] memory path = new address[](2);
-        path[0] = exchangeToken;
-        path[1] = contractTokenAddress;
+        if (Direction == 1) {
+            //Contract Tokens Comin and out LP
+            path[0] = contractTokenAddress;
+            path[1] = exchangeToken;
+        } else {
+            path[0] = exchangeToken; //Contract Tokens out with eth Going in
+            path[1] = contractTokenAddress;
+        }
 
         return path;
     }
